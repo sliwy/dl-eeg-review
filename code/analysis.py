@@ -8,7 +8,7 @@ from collections import OrderedDict
 import subprocess
 
 import pandas as pd
-import geopandas as gpd
+# import geopandas as gpd
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 import matplotlib.patches as patches
@@ -16,8 +16,10 @@ import matplotlib as mpl
 import seaborn as sns
 import numpy as np
 from PIL import Image
-from wordcloud import WordCloud, STOPWORDS
-from graphviz import Digraph
+
+mpl.use('TKAgg')
+# from wordcloud import WordCloud, STOPWORDS
+# from graphviz import Digraph
 
 import config as cfg
 import utils as ut
@@ -1533,3 +1535,96 @@ def plot_eeg_intro(save_cfg=cfg.saving_config):
         fig.savefig(fname + '.' + save_cfg['format'], **save_cfg)
 
     return ax
+
+
+def plot_data_quantity_acc(df, results_df, save_cfg=cfg.saving_config):
+    """Plot the quantity of data used by domain.
+    """
+    data_df = ut.split_column_with_multiple_entries(
+        df, ['Data - samples', 'Data - time'], ref_col=['Citation', 'Main domain', 'Features (clean)'], 
+        sep=';\n', lower=False)
+
+    # Remove N/M and TBD
+    col = 'Data - samples'
+    data_df.loc[data_df[col].isin(['N/M', 'TBD', '[TBD]']), col] = np.nan
+    data_df[col] = data_df[col].astype(float)
+
+    col2 = 'Data - time'
+    data_df.loc[data_df[col2].isin(['N/M', 'TBD', '[TBD]']), col2] = np.nan
+    data_df[col2] = data_df[col2].astype(float)
+
+    # Wrap main domain text
+    data_df['Main domain'] = data_df['Main domain'].apply(
+        ut.wrap_text, max_char=13)
+
+    # Extract ratio
+    data_df['data_ratio'] = data_df['Data - samples'] / data_df['Data - time']
+    data_df = data_df.sort_values(['Main domain', 'data_ratio'])
+    
+    acc_df = results_df[results_df['Metric'] == 'accuracy']  # Extract accuracy rows only
+
+    # Create new column that contains both citation and task information
+    acc_df.loc[:, 'citation_task'] = acc_df[['Citation', 'Task']].apply(
+        lambda x: ' ['.join(x) + ']', axis=1)
+
+    # Create a new column with the year
+    acc_df.loc[:, 'year'] = acc_df['Citation'].apply(
+        lambda x: int(x[x.find('2'):x.find('2') + 4]))
+    
+    acc_df_best_proposed = acc_df[acc_df['model_type'] == 'Proposed'].sort_values('Result', ascending=False).drop_duplicates('Citation')
+    acc_df_best_baseline_trad = acc_df[acc_df['model_type'] == 'Baseline (traditional)'].sort_values('Result', ascending=False).drop_duplicates('Citation')
+    
+    acc_df_best_proposed = acc_df_best_proposed[acc_df_best_proposed['Citation'].isin(acc_df_best_baseline_trad['Citation'])]
+    acc_df_best_baseline_trad = acc_df_best_baseline_trad[acc_df_best_baseline_trad['Citation'].isin(acc_df_best_proposed['Citation'])]
+
+    acc_df_best_proposed = acc_df_best_proposed.sort_values('Citation')
+    acc_df_best_baseline_trad = acc_df_best_baseline_trad.sort_values('Citation')
+    acc_df_best_baseline_trad.index = acc_df_best_baseline_trad['Citation']
+    acc_df_best_proposed.index = acc_df_best_proposed['Citation']
+    
+    acc_diff = pd.DataFrame({
+        'Difference': acc_df_best_proposed['Result'] - acc_df_best_baseline_trad['Result'],
+        'Citation': acc_df_best_baseline_trad.index
+    }).reset_index(drop=True)
+    
+    data_df = pd.merge(data_df, acc_diff, on='Citation')
+    
+    # Plot
+    fig, axes = plt.subplots(
+        ncols=1, 
+        figsize=(save_cfg['text_width'], save_cfg['text_height'] / 1))
+    axes = [axes]
+    
+    # axes[0].set(xscale='log', yscale='linear')
+    sns.pointplot(y='Difference', x=col2, data=data_df, ax=axes[0], size=3, join=False, hue='Features (clean)')
+    axes[0].set_xlabel('Recording time (min)')
+    axes[0].set_ylabel('')
+    # max_val = int(np.ceil(np.log10(data_df[col2].max())))
+    # axes[0].set_xticks(np.power(10, range(0, max_val + 1)))
+
+    # axes[1].set(xscale='log', yscale='linear')
+    # sns.swarmplot(y='Main domain', x=col, data=data_df, ax=axes[1], size=3)
+    # axes[1].set_xlabel('Number of examples')
+    # axes[1].set_yticklabels('')
+    # axes[1].set_ylabel('')
+    # min_val = int(np.floor(np.log10(data_df[col].min())))
+    # max_val = int(np.ceil(np.log10(data_df[col].max())))
+    # axes[1].set_xticks(np.power(10, range(min_val, max_val + 1)))
+
+    # axes[2].set(xscale='log', yscale='linear')
+    # sns.swarmplot(y='Main domain', x='data_ratio', data=data_df, ax=axes[2], 
+    #               size=3)
+    # axes[2].set_xlabel('Ratio (examples/min)')
+    # axes[2].set_ylabel('')
+    # axes[2].set_yticklabels('')
+    # min_val = int(np.floor(np.log10(data_df['data_ratio'].min())))
+    # max_val = int(np.ceil(np.log10(data_df['data_ratio'].max())))
+    # axes[2].set_xticks(np.power(10, np.arange(min_val, max_val + 1, dtype=float)))
+
+    plt.tight_layout()
+
+    if save_cfg is not None:
+        fname = os.path.join(save_cfg['savepath'], 'data_quantity_acc')
+        fig.savefig(fname + '.' + save_cfg['format'], **save_cfg)
+
+    return axes

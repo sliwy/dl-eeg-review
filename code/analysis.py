@@ -335,7 +335,7 @@ def plot_reported_results(df, data_items_df=None, save_cfg=cfg.saving_config):
     Returns:
         (list): list of axes to created figures
 
-    TODO:
+    TODO:plot_dataset_size_vs_acc
     - This function is starting to be a bit too big. Should probably split it up.
     """
     acc_df = df[df['Metric'] == 'accuracy']  # Extract accuracy rows only
@@ -749,7 +749,7 @@ def plot_type_of_paper(df, save_cfg=cfg.saving_config):
     ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
     plt.tight_layout()
 
-    counts = df['Type of paper'].value_counts()
+    counts = df['Type of paper'].value_cplot_dataset_size_vs_accounts()
     logger.info('Number of journal papers: {}'.format(counts['Journal']))
     logger.info('Number of conference papers: {}'.format(counts['Conference']))
     logger.info('Number of preprints: {}'.format(counts['Preprint']))
@@ -1586,8 +1586,10 @@ def plot_data_quantity_acc(df, results_df, save_cfg=cfg.saving_config):
         'Difference': acc_df_best_proposed['Result'] - acc_df_best_baseline_trad['Result'],
         'Citation': acc_df_best_baseline_trad.index
     }).reset_index(drop=True)
+    acc_diff = acc_diff[acc_diff['Difference'] < 0.5]
     
     data_df = pd.merge(data_df, acc_diff, on='Citation')
+    data_df = data_df.dropna()
     
     # Plot
     fig, axes = plt.subplots(
@@ -1596,11 +1598,12 @@ def plot_data_quantity_acc(df, results_df, save_cfg=cfg.saving_config):
     axes = [axes]
     
     # axes[0].set(xscale='log', yscale='linear')
+    # sns.relplot(y='Difference', x=col2, data=data_df, kind='line', ax=axes[0])
     sns.pointplot(y='Difference', x=col2, data=data_df, ax=axes[0], size=3, join=False, hue='Features (clean)')
     axes[0].set_xlabel('Recording time (min)')
     axes[0].set_ylabel('')
-    # max_val = int(np.ceil(np.log10(data_df[col2].max())))
-    # axes[0].set_xticks(np.power(10, range(0, max_val + 1)))
+    max_val = int(np.ceil(np.log10(data_df[col2].max())))
+    axes[0].set_xticks(np.power(10, range(0, max_val + 1)))
 
     # axes[1].set(xscale='log', yscale='linear')
     # sns.swarmplot(y='Main domain', x=col, data=data_df, ax=axes[1], size=3)
